@@ -1,10 +1,18 @@
+// Import dependencies
 require("dotenv").config();
-
 const SteamUser = require("steam-user");
-const SteamTotp = require("steam-totp");
 const config = require("./config");
 const cron = require("node-cron");
 
+// Validate configuration
+const requiredConfig = ['accountName', 'password', 'publicUsername'];
+requiredConfig.forEach(key => {
+  if (!config[key]) {
+    throw new Error(`Missing required config key: ${key}`);
+  }
+});
+
+// Initialize Steam client
 const client = new SteamUser();
 
 const logInOptions = {
@@ -12,15 +20,21 @@ const logInOptions = {
   password: config.password,
 };
 
+// Log on to Steam
 client.logOn(logInOptions);
 
 client.on("loggedOn", () => {
   console.log("Bot logged on");
-
   client.setPersona(SteamUser.EPersonaState.Online, config.publicUsername);
-  client.gamesPlayed('Counter-Strike 2');
+  client.gamesPlayed("Counter-Strike 2");
 });
 
+// Error handling for client events
+client.on("error", (err) => {
+  console.error("Client error:", err);
+});
+
+// Initialize player lists
 let list = [];
 let spareList = [];
 
@@ -66,17 +80,10 @@ const showList = () => {
 };
 
 const commands = {
-  "!gram": (userName) => {
-    return addToList(userName);
-  },
-  "!nie gram": (userName) => {
-    return removeFromList(userName);
-  },
-  "!lista": () => {
-    return showList();
-  },
-  "!help": () => {
-    return `
+  "!gram": (userName) => addToList(userName),
+  "!nie gram": (userName) => removeFromList(userName),
+  "!lista": () => showList(),
+  "!help": () => `
     Dostępne komendy:
     ---------------------\n
     !gram - dodaje gracza do listy
@@ -84,36 +91,59 @@ const commands = {
     !lista - wyświetla listę graczy \n
     ---------------------
     Lista będzie czyszczona codziennie o godzinie 00:01
-    `;
-  },
+  `,
 };
 
-const handleCommand = (command, userName) => {
+const handleCommand = async (command, userName) => {
   if (commands[command]) {
     return commands[command](userName);
   }
 };
 
-client.chat.on("friendMessage", function (msgObj) {
-  const user = msgObj.steamid_friend.getSteamID64();
+// Retry function with exponential backoff
+const retryWithBackoff = async (fn, retries = 3, delay = 1000) => {
+  try {
+    return await fn();
+  } catch (err) {
+    if (retries > 1) {
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * 2);
+    } else {
+      throw err;
+    }
+  }
+};
 
-  client.chat.sendFriendMessage(user, "Spierdalaj, nie gadam z tobą!");
+client.chat.on("friendMessage", async (msgObj) => {
+  const user = msgObj.steamid_friend.getSteamID64();
+  try {
+    await client.chat.sendFriendMessage(user, "Spierdalaj, nie gadam z tobą!");
+  } catch (err) {
+    console.error("Error sending friend message:", err);
+  }
 });
 
-client.chat.on("chatMessage", function (msgObj) {
-  let steamidObj = msgObj.steamid_sender;
+client.chat.on("chatMessage", async (msgObj) => {
+  const steamID = msgObj.steamid_sender.getSteamID64();
   const message = msgObj.message;
-  const user = steamidObj.getSteamID64();
-  const userName = client.users[user].player_name;
-  let groupId = msgObj.chat_group_id,
-    chatId = msgObj.chat_id,
-    serverTimestamp = msgObj.server_timestamp,
-    ordinal = msgObj.ordinal;
+  if (steamID) {
+    try {
+      const { personas } = await retryWithBackoff(() => client.getPersonas([steamID]));
+      const userName = personas[steamID].player_name;
+      let groupId = msgObj.chat_group_id,
+        chatId = msgObj.chat_id,
+        serverTimestamp = msgObj.server_timestamp,
+        ordinal = msgObj.ordinal;
 
-  if (message.startsWith("!")) {
-    const response = handleCommand(message, userName);
-    if (response) {
-      client.chat.sendChatMessage(groupId, chatId, response);
+      if (message.startsWith("!")) {
+        const response = await handleCommand(message, userName);
+        if (response) {
+          await client.chat.sendChatMessage(groupId, chatId, response);
+        }
+      }
+    } catch (err) {
+      console.error("Error handling chat message:", err);
     }
   }
 });
