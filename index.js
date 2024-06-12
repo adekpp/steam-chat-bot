@@ -15,7 +15,7 @@ requiredConfig.forEach((key) => {
 
 // Initialize Steam client and PocketBase
 const client = new SteamUser();
-const pb = new PocketBase("http://138.68.109.5:8090");
+const pb = new PocketBase(config.database);
 
 const logInOptions = {
   accountName: config.accountName,
