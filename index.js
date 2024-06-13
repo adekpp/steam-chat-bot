@@ -138,6 +138,7 @@ const showList = async () => {
         isPlaying: true,
         isSpare: true,
       }),
+      sort: 'updated'
     });
     const activePlayers = players
       .filter((player) => player.isPlaying && !player.isSpare)
