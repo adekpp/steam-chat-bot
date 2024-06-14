@@ -29,6 +29,7 @@ client.on("loggedOn", () => {
   console.log("Bot logged on");
   client.setPersona(SteamUser.EPersonaState.Online, config.publicUsername);
   client.gamesPlayed("Counter-Strike 2");
+  clearList();
 });
 
 // Error handling for client events
@@ -62,10 +63,20 @@ const processQueue = async () => {
 
 const clearList = async () => {
   try {
-    await pb
+    const activePlayers = await pb
       .collection("players")
-      .update({}, { isPlaying: false, isSpare: false });
-    console.log("Player list cleared");
+      .getFullList("isPlaying = {:isPlaying} || isSpare = {:isSpare} ", {
+        isPlaying: true,
+        isSpare: true,
+      });
+    for (const activePlayer of activePlayers) {
+      const updatedPlayer = {
+        ...activePlayer,
+        isPlaying: false,
+        isSpare: false,
+      };
+      await pb.collection("players").update(activePlayer.id, updatedPlayer);
+    }
   } catch (err) {
     console.error("Error clearing list:", err);
   }
@@ -138,7 +149,7 @@ const showList = async () => {
         isPlaying: true,
         isSpare: true,
       }),
-      sort: 'updated'
+      sort: "updated",
     });
     const activePlayers = players
       .filter((player) => player.isPlaying && !player.isSpare)
