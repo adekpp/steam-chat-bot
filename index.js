@@ -93,7 +93,7 @@ const addToList = async (steamID, playerName) => {
       steamId: steamID,
       name: playerName,
       isPlaying: activePlayers.length <= 10,
-      isSpare: activePlayers.length === 10,
+      isSpare: activePlayers.length > 10,
     };
 
     try {
