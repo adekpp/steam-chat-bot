@@ -29,7 +29,6 @@ client.on("loggedOn", () => {
   console.log("Bot logged on");
   client.setPersona(SteamUser.EPersonaState.Online, config.publicUsername);
   client.gamesPlayed("Counter-Strike 2");
-  clearList();
 });
 
 // Error handling for client events
